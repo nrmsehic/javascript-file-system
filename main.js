@@ -1,60 +1,82 @@
-var fs = (() => {
-  var pathname = window.location.pathname
-  var dirname = pathname.substring(0, pathname.lastIndexOf('/'))
+var jfs = (() => {
 
 
-  var implode = (array, delimeter) => {
-    if(delimeter !== undefined) {
-      var arrStr = ""
+  var getDirectory = (pathname) => {
+    return pathname.substring(0, pathname.lastIndexOf('/'))
+  }
 
-      for(var i = 0; i < array.length; i++) {
-        arrStr += array[i]
-
-        if(i < array.length-1) arrStr += delimeter
+  var config = {
+    http: {
+      post: {
+        contentType: 'application/x-www-form-urlencoded',
+        responseType: 'text'
+      },
+      get: {
+        contentType: 'text/plain',
+        responseType: 'text'
       }
+    },
+    path: {
+      pathname: window.location.pathname,
+      dirname: getDirectory(window.location.pathname)
+    },
+    resource: {
+      implode: (array, delimeter) => {
+        if(delimeter !== undefined) {
+          var arrstr = ""
 
-      return arrStr
+          for(var i = 0; i < array.length; i++) {
+            arrstr += array[i]
+            arrstr += i < array.length-1 ? delimeter: ""
+          }
+
+          return arrstr
+        }
+
+        var arrstr = ""
+
+        for(var i = 0; i < array.length; i++) {
+          arrstr += array[i]
+          arrstr += i < array.length-1 ? "," : ""
+        }
+
+        return arrstr
+
+      },
+      encode: (object) => {
+        var strrep = ""
+        var keys = Object.keys(object)
+        var values = Object.values(object)
+
+        for(var i = 0; i < keys.length; i++) {
+          strrep += keys[i] + "=" + values[i]
+          strrep += i < keys.length-1 ? "&":""
+        }
+
+        return strrep
+      },
+      grabFunction: (FieldName) => {
+
+        return {
+          source: (bulk) => {
+            return bulk.substring(bulk.indexOf(FieldName), bulk.indexOf('}', bulk.indexOf(FieldName))+1)
+          }
+        }
+
+      }
+    },
+    server: {
+      hostname: 'localhost',
+      port: 8000,
+      virtualhost: false,
+      projectname: 'javascript-file-system'
     }
-
-    var arrStr = ""
-
-    for(var i = 0; i < array.length; i++) {
-      arrStr += array[i]
-
-      if(i < array.length -1) arrStr += ","
-    }
-
-    return arrStr
   }
-
-
-  var encode = (object) => {
-    //string representation of object
-    var strRep = ""
-
-    //get keys and values of object and store them in two variables
-    var keys = Object.keys(object)
-    var values = Object.values(object)
-
-
-    //loop through all the keys and values and append them to the string
-
-    for(var i = 0; i < keys.length; i++) {
-      strRep += implode([keys[i], values[i]], '=')
-      if(i < keys.length -1) strRep += "&"
-    }
-
-    return strRep
-  }
-
-
-
-
 
   var httpPost = (url, data, cb) => {
     var xhr = new XMLHttpRequest()
     xhr.open('POST', url, true)
-    xhr.setRequestHeader('Content-Type','application/x-www-form-urlencoded')
+    xhr.setRequestHeader('Content-Type', config.http.post.contentType)
     xhr.onreadystatechange = () => {
       if(xhr.readyState == 4 && xhr.status == 200) {
         typeof cb == 'function' ? cb.call(null, xhr.responseText): null
@@ -62,7 +84,7 @@ var fs = (() => {
     }
 
     if(typeof data == 'object') {
-      xhr.send(encode(data))
+      xhr.send(config.resource.encode(data))
     } else {
       xhr.send(data)
     }
@@ -70,9 +92,9 @@ var fs = (() => {
 
   var httpGet = (url, parameters, cb) => {
     var xhr = new XMLHttpRequest()
-    var urlParams = implode([url, typeof parameters == 'object' ? encode(parameters) : parameters], '?')
+    var urlParams = config.resource.implode([url, typeof parameters == 'object' ? config.resource.encode(parameters) : parameters], '?')
     xhr.open('GET', urlParams, true)
-    xhr.setRequestHeader('content-type',this)
+    xhr.setRequestHeader('content-type', config.http.get.contentType)
     xhr.onreadystatechange = () => {
       if(xhr.readyState == 4 && xhr.status == 200) {
         typeof cb == 'function' ? cb.call(null, xhr.responseText) : null
@@ -90,15 +112,17 @@ var fs = (() => {
       var fullpath;
 
       if(params.length == 2) {
-        fullpath = implode([dirname, implode([params],'.')],'/')
+        fullpath = config.resource.implode([config.path.dirname, filename], '/')
       } else {
-        fullpath = implode([dirname, implode([params[0],'txt'],'.')],'/')
+        fullpath = config.resource.implode([config.path.dirname, config.resource.implode([params[0],'txt'],'.')],'/')
       }
 
-
+      config.http.get.contentType = 'text/plain'
       httpGet(fullpath, {open:true}, (response) => {
         console.log(response)
       })
+
+
     },
     view: (filename) => {
       var params = filename.split('.')
@@ -106,14 +130,45 @@ var fs = (() => {
 
       if(params.length == 2) {
         //contains file extension
-        fullpath = implode([dirname, implode([params],'.')],'/')
+        fullpath = config.resource.implode([config.path.dirname, filename], '/')
       } else {
-        fullpath = implode([dirname, implode([params[0], 'html'],'.')],'/')
+        fullpath = config.resource.implode([config.path.dirname, config.resource.implode([params[0], 'html'],'.')],'/')
       }
-
+      config.http.get.contentType = 'text/html'
       httpGet(fullpath, {open: true}, (response) => {
         document.innerHTML = response
       })
+    },
+    import: (filename) => {
+      var params = filename.split('.')
+      var fullpath;
+
+      var scriptTag = document.createElement('script')
+
+      if(params.length == 2) {
+        fullpath = config.resource.implode([config.path.dirname, filename], '/')
+      } else {
+        fullpath = config.resource.implode([config.path.dirname, config.resource.implode([params[0], 'js'],'.')],'/')
+      }
+
+      config.http.get.contentType = 'text/javascript'
+      httpGet(fullpath, {}, (response) => {
+        scriptTag.innerHTML = response
+        document.head.prepend(scriptTag)
+      })
+
+    },
+    executeJS: (params) => {
+      var args = params.split('/')
+      var functionName = args.pop()
+      var filename = config.resource.implode([args.join('/'), 'js'], '.')
+      var fullpath = config.resource.implode([config.path.dirname, filename],'/')
+
+      config.http.get.contentType = 'text/javascript'
+      httpGet(fullpath, {}, (response) => {
+        const exec = config.resource.grabFunction(functionName).source(response)
+      })
+
     }
   }
 
